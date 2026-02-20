@@ -1,0 +1,31 @@
+def show_chart(self):
+    student_id = self.controller.logged_in_student_id
+
+    self.controller.db.cursor.execute("""
+        SELECT c.course_code, e.score
+        FROM enrollments e
+        JOIN courses c ON e.course_id = c.id
+        WHERE e.student_id=?
+    """, (student_id,))
+
+    records = self.controller.db.cursor.fetchall()
+
+    if not records:
+        tk.messagebox.showinfo("No Data", "No scores available")
+        return
+
+    courses = [r[0] for r in records]
+    scores = [r[1] for r in records]
+
+    chart_window = tk.Toplevel(self)
+    chart_window.title("GPA Chart")
+
+    fig, ax = plt.subplots()
+    ax.bar(courses, scores)
+    ax.set_title("Course Scores")
+    ax.set_xlabel("Courses")
+    ax.set_ylabel("Scores")
+
+    canvas = FigureCanvasTkAgg(fig, master=chart_window)
+    canvas.draw()
+    canvas.get_tk_widget().pack(fill="both", expand=True)
