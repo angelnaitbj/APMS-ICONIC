@@ -1,0 +1,4 @@
+self.search_var = tk.StringVar()
+self.search_var.trace("w", self.search)
+
+tk.Entry(self, textvariable=self.search_var).pack(pady=5)
