@@ -1,0 +1,148 @@
+import tkinter as tk
+from tkinter import ttk
+import sqlite3
+import hashlib
+
+# ================= PASSWORD HASH =================
+def hash_password(password):
+    return hashlib.sha256(password.encode()).hexdigest()
+
+# ================= DATABASE =================
+class Database:
+    def __init__(self):
+        self.conn = sqlite3.connect("apms.db")
+        self.cursor = self.conn.cursor()
+        self.create_tables()
+        self.create_default_admin()
+
+    def create_tables(self):
+        self.cursor.executescript("""
+        CREATE TABLE IF NOT EXISTS admins(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE,
+            password TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS students(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT,
+            matric_no TEXT UNIQUE,
+            password TEXT
+        );
+        """)
+        self.conn.commit()
+
+    def create_default_admin(self):
+        self.cursor.execute("SELECT * FROM admins WHERE username='admin'")
+        if not self.cursor.fetchone():
+            self.cursor.execute(
+                "INSERT INTO admins(username,password) VALUES (?,?)",
+                ("admin", hash_password("admin"))
+            )
+            self.conn.commit()
+
+# ================= MAIN APP =================
+class APMSApp(tk.Tk):
+    def __init__(self):
+        super().__init__()
+        self.title("APMS")
+        self.geometry("800x500")
+        self.db = Database()
+
+        container = tk.Frame(self)
+        container.pack(fill="both", expand=True)
+
+        self.frames = {}
+
+        for F in (LoginSelectionFrame, AdminLoginFrame, StudentLoginFrame):
+            frame = F(container, self)
+            self.frames[F.__name__] = frame
+            frame.grid(row=0, column=0, sticky="nsew")
+
+        self.show_frame("LoginSelectionFrame")
+
+    def show_frame(self, name):
+        frame = self.frames[name]
+        frame.tkraise()
+
+
+# ================= LOGIN SELECTION =================
+class LoginSelectionFrame(tk.Frame):
+    def __init__(self, parent, controller):
+        super().__init__(parent)
+        tk.Label(self, text="Select Login Type", font=("Arial", 20)).pack(pady=30)
+
+        tk.Button(self, text="Admin Login",
+                  command=lambda: controller.show_frame("AdminLoginFrame")).pack(pady=10)
+
+        tk.Button(self, text="Student Login",
+                  command=lambda: controller.show_frame("StudentLoginFrame")).pack(pady=10)
+
+
+# ================= ADMIN LOGIN =================
+class AdminLoginFrame(tk.Frame):
+    def __init__(self, parent, controller):
+        super().__init__(parent)
+
+        tk.Label(self, text="Admin Login", font=("Arial", 18)).pack(pady=10)
+
+        self.username = tk.Entry(self)
+        self.username.pack()
+
+        self.password = tk.Entry(self, show="*")
+        self.password.pack()
+
+        tk.Button(self, text="Login", command=lambda: self.login(controller)).pack(pady=10)
+        tk.Button(self, text="Back",
+                  command=lambda: controller.show_frame("LoginSelectionFrame")).pack()
+
+    def login(self, controller):
+        username = self.username.get()
+        password = hash_password(self.password.get())
+
+        controller.db.cursor.execute(
+            "SELECT * FROM admins WHERE username=? AND password=?",
+            (username, password)
+        )
+
+        if controller.db.cursor.fetchone():
+            controller.show_frame("AdminDashboardFrame")
+        else:
+            tk.messagebox.showerror("Error", "Invalid Login")
+
+
+# ================= STUDENT LOGIN =================
+class StudentLoginFrame(tk.Frame):
+    def __init__(self, parent, controller):
+        super().__init__(parent)
+
+        tk.Label(self, text="Student Login", font=("Arial", 18)).pack(pady=10)
+
+        self.matric = tk.Entry(self)
+        self.matric.pack()
+
+        self.password = tk.Entry(self, show="*")
+        self.password.pack()
+
+        tk.Button(self, text="Login", command=lambda: self.login(controller)).pack(pady=10)
+        tk.Button(self, text="Back",
+                  command=lambda: controller.show_frame("LoginSelectionFrame")).pack()
+
+    def login(self, controller):
+        matric = self.matric.get()
+        password = hash_password(self.password.get())
+
+        controller.db.cursor.execute(
+            "SELECT * FROM students WHERE matric_no=? AND password=?",
+            (matric, password)
+        )
+
+        if controller.db.cursor.fetchone():
+            controller.show_frame("StudentDashboardFrame")
+        else:
+            tk.messagebox.showerror("Error", "Invalid Login")
+
+
+if __name__ == "__main__":
+    app = APMSApp()
+    app.mainloop()
