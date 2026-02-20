@@ -1,0 +1,11 @@
+tk.Button(self, text="Manage Courses",
+          command=lambda: CRUDWindow(controller.db,
+                                     "courses",
+                                     ["id","course_code","course_title","credit_unit"])
+          ).pack(pady=5)
+
+tk.Button(self, text="Manage Enrollments",
+          command=lambda: CRUDWindow(controller.db,
+                                     "enrollments",
+                                     ["id","student_id","course_id","score"])
+          ).pack(pady=5)
