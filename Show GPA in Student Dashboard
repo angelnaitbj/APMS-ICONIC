@@ -1,0 +1,17 @@
+class StudentDashboardFrame(tk.Frame):
+    def __init__(self, parent, controller):
+        super().__init__(parent)
+        self.controller = controller
+
+        tk.Label(self, text="Student Dashboard", font=("Arial", 20)).pack(pady=20)
+
+        tk.Button(self, text="View GPA",
+                  command=self.view_gpa).pack(pady=5)
+
+        tk.Button(self, text="Logout",
+                  command=lambda: controller.show_frame("LoginSelectionFrame")).pack(pady=10)
+
+    def view_gpa(self):
+        student_id = self.controller.logged_in_student_id
+        gpa = calculate_gpa(self.controller.db, student_id)
+        tk.messagebox.showinfo("GPA", f"Your GPA is: {gpa}")
