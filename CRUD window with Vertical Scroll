@@ -1,0 +1,34 @@
+class CRUDWindow(tk.Toplevel):
+    def __init__(self, db, table, columns):
+        super().__init__()
+        self.db = db
+        self.table = table
+        self.columns = columns
+
+        self.title(f"Manage {table}")
+        self.geometry("700x400")
+
+        frame = tk.Frame(self)
+        frame.pack(fill="both", expand=True)
+
+        scrollbar = tk.Scrollbar(frame, orient="vertical")
+        scrollbar.pack(side="right", fill="y")
+
+        self.tree = ttk.Treeview(frame, columns=columns,
+                                 show="headings",
+                                 yscrollcommand=scrollbar.set)
+
+        scrollbar.config(command=self.tree.yview)
+
+        for col in columns:
+            self.tree.heading(col, text=col)
+            self.tree.column(col, width=120)
+
+        self.tree.pack(fill="both", expand=True)
+
+        self.load_data()
+
+    def load_data(self):
+        self.db.cursor.execute(f"SELECT * FROM {self.table}")
+        for row in self.db.cursor.fetchall():
+            self.tree.insert("", "end", values=row)
