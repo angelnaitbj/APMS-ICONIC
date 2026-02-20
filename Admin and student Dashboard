@@ -1,0 +1,22 @@
+# ================= ADMIN DASHBOARD =================
+class AdminDashboardFrame(tk.Frame):
+    def __init__(self, parent, controller):
+        super().__init__(parent)
+
+        tk.Label(self, text="Admin Dashboard", font=("Arial", 20)).pack(pady=20)
+
+        tk.Button(self, text="Manage Students").pack(pady=5)
+        tk.Button(self, text="Logout",
+                  command=lambda: controller.show_frame("LoginSelectionFrame")).pack(pady=10)
+
+
+# ================= STUDENT DASHBOARD =================
+class StudentDashboardFrame(tk.Frame):
+    def __init__(self, parent, controller):
+        super().__init__(parent)
+
+        tk.Label(self, text="Student Dashboard", font=("Arial", 20)).pack(pady=20)
+
+        tk.Button(self, text="View Profile").pack(pady=5)
+        tk.Button(self, text="Logout",
+                  command=lambda: controller.show_frame("LoginSelectionFrame")).pack(pady=10)
