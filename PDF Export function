@@ -1,0 +1,31 @@
+from reportlab.platypus import SimpleDocTemplate, Table
+from reportlab.lib import colors
+
+def export_to_pdf(tree):
+    try:
+        file_path = filedialog.asksaveasfilename(
+            defaultextension=".pdf",
+            filetypes=[("PDF Files", "*.pdf")]
+        )
+
+        if not file_path:
+            return
+
+        doc = SimpleDocTemplate(file_path)
+
+        data = [tree["columns"]]
+        for row in tree.get_children():
+            data.append(tree.item(row)["values"])
+
+        table = Table(data)
+        table.setStyle([
+            ('BACKGROUND', (0,0), (-1,0), colors.grey),
+            ('GRID', (0,0), (-1,-1), 1, colors.black)
+        ])
+
+        doc.build([table])
+
+        messagebox.showinfo("Success", "Exported to PDF successfully!")
+
+    except Exception as e:
+        messagebox.showerror("Error", str(e))
