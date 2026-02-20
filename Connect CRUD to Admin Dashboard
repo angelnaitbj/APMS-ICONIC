@@ -1,0 +1,5 @@
+tk.Button(self, text="Manage Students",
+          command=lambda: CRUDWindow(controller.db,
+                                     "students",
+                                     ["id", "name", "matric_no", "password"])
+          ).pack(pady=5)
