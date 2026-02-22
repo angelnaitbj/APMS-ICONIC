@@ -1,7 +1,7 @@
-🎓 Academic Performance Management System (APMS) v3.0
+🎓 Academic Performance Management System (APMS) v1.0
 📌 Overview
 
-The Academic Performance Management System (APMS) v3.0 is a desktop-based academic result processing system developed using Python and Tkinter GUI.
+The Academic Performance Management System (APMS) v1.0 is a desktop-based academic result processing system developed using Python and Tkinter GUI.
 
 It is designed to manage students, courses, enrollments, academic sessions, and academic performance while automatically calculating GPA and CGPA.
 
@@ -97,7 +97,7 @@ SQLite3 (Database)
 Matplotlib (GPA Chart Visualization)
 
 📂 Project Structure
-APMS_v3.0/
+APMS_v1.0/
 │
 ├── main.py
 ├── database.db
@@ -105,9 +105,9 @@ APMS_v3.0/
 └── requirements.txt
 ⚙️ Installation Guide
 1️⃣ Clone the Repository
-git clone https://github.com/angelnaitbj/APMS-v3.0.git
+git clone https://github.com/angelnaitbj/APMS-v1.0.git
 2️⃣ Navigate to the Project Folder
-cd APMS-v3.0
+cd APMS-v1.0
 3️⃣ Install Required Packages
 pip install matplotlib
 
@@ -130,7 +130,11 @@ Score	Grade	Grade Point
 0 – 39	F	0.0
 🖥️ Screenshots
 
-(Add your screenshots here)
+<img width="1536" height="1024" alt="loginppt" src="https://github.com/user-attachments/assets/30719f4e-234f-4fac-be68-49a97530f066" />
+<img width="1024" height="1536" alt="Admindashboardppt" src="https://github.com/user-attachments/assets/4a108835-9150-493c-bcd9-b3c2c57e6fa9" />
+<img width="1536" height="1024" alt="CRUDppt" src="https://github.com/user-attachments/assets/56e8ab26-9bfc-41c9-895d-2760ea50f893" />
+<img width="1536" height="1024" alt="studentdashboardppt" src="https://github.com/user-attachments/assets/df7a918f-9111-47af-9778-3762bf08e53d" />
+
 
 Login Interface
 
@@ -171,7 +175,7 @@ Basic student and course management
 
 Manual GPA system
 
-v2.0
+v0.0
 
 Full CRUD functionality
 
@@ -179,7 +183,7 @@ Automatic GPA & CGPA
 
 Enrollment system
 
-v3.0 (Current Version)
+v1.0 (Current Version)
 
 Modern Dashboard UI
 
@@ -193,7 +197,7 @@ Enhanced Security
 
 Search & Scrollable Tables
 
-📌 Future Improvements (v4.0 Ideas)
+📌 Future Improvements (v2.0 Ideas)
 
 Multi-Admin Support
 
