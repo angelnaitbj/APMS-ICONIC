@@ -1,0 +1,711 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Wed Feb 25 01:27:18 2026
+
+@author: naitb
+"""
+
+
+"""
+===========================================================
+ACADEMIC PERFORMANCE MANAGEMENT SYSTEM (APMS)
+Python | Tkinter | SQLite | Matplotlib
+Full Features + GPA/CGPA + Grading + Multi-Semester/Year
+Printable & Saveable Transcript + School Name per Student
+===========================================================
+"""
+
+import tkinter as tk
+from tkinter import ttk, messagebox, simpledialog, filedialog
+import sqlite3
+import hashlib
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.units import inch
+
+# ========================= CONFIG =========================
+THEME = {
+    "bg_main": "#1e1e2f",
+    "bg_frame": "#2e2e3f",
+    "fg_text": "#ffffff",
+    "btn_bg": "#ff6f61",
+    "btn_fg": "#ffffff",
+    "btn_hover": "#ff3b2f",
+    "title": "#ffd700"
+}
+
+def hash_pwd(pwd):
+    return hashlib.sha256(pwd.encode()).hexdigest()
+
+# ========================= DATABASE =========================
+class Database:
+    _instance = None
+    def __init__(self):
+        self.conn = sqlite3.connect("apms_student.db")
+        self.cursor = self.conn.cursor()
+        self.create_tables()
+        self.create_default_admin()
+    @classmethod
+    def get_instance(cls):
+        if cls._instance is None:
+            cls._instance = Database()
+        return cls._instance
+    def create_tables(self):
+        self.cursor.executescript("""
+        CREATE TABLE IF NOT EXISTS admins(
+            id INTEGER PRIMARY KEY AUTOINCREMENT, 
+            username TEXT UNIQUE, 
+            password TEXT
+        );
+        CREATE TABLE IF NOT EXISTS students(
+            id INTEGER PRIMARY KEY AUTOINCREMENT, 
+            name TEXT, 
+            matric_no TEXT UNIQUE, 
+            password TEXT,
+            school_name TEXT
+        );
+        CREATE TABLE IF NOT EXISTS courses(
+            id INTEGER PRIMARY KEY AUTOINCREMENT, 
+            course_code TEXT UNIQUE, 
+            course_title TEXT, 
+            credit_unit INTEGER
+        );
+        CREATE TABLE IF NOT EXISTS semesters(
+            id INTEGER PRIMARY KEY AUTOINCREMENT, 
+            name TEXT UNIQUE
+        );
+        CREATE TABLE IF NOT EXISTS academic_years(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT UNIQUE
+        );
+        CREATE TABLE IF NOT EXISTS enrollments(
+            id INTEGER PRIMARY KEY AUTOINCREMENT, 
+            student_id INTEGER, 
+            course_id INTEGER, 
+            semester_id INTEGER,
+            year_id INTEGER,
+            UNIQUE(student_id, course_id, semester_id, year_id)
+        );
+        CREATE TABLE IF NOT EXISTS assessments(
+            id INTEGER PRIMARY KEY AUTOINCREMENT, 
+            course_id INTEGER, 
+            assessment_name TEXT, 
+            max_score INTEGER
+        );
+        CREATE TABLE IF NOT EXISTS scores(
+            id INTEGER PRIMARY KEY AUTOINCREMENT, 
+            student_id INTEGER, 
+            assessment_id INTEGER, 
+            score REAL,
+            UNIQUE(student_id, assessment_id)
+        );
+        """)
+        self.conn.commit()
+    def create_default_admin(self):
+        hashed = hash_pwd("admin")
+        self.cursor.execute("SELECT * FROM admins WHERE username='admin'")
+        if not self.cursor.fetchone():
+            self.cursor.execute("INSERT INTO admins(username,password) VALUES (?,?)",("admin",hashed))
+            self.conn.commit()
+    def close(self):
+        self.conn.close()
+
+# ========================= RESULT SERVICE =========================
+class ResultService:
+    GRADE_SCALE = [(70,5,"A"),(60,4,"B"),(50,3,"C"),(45,2,"D"),(40,1,"E"),(0,0,"F")]
+    LETTER_GRADE = [(4.5,"5","First Class"),(3.5,"4","Second Class Upper"),(2.5,"3","Second Class Lower"),
+                    (2.0,"2","Third Class"),(1.0,"1","Pass"),(0,"0","Fail")]
+
+    @staticmethod
+    def calculate_gpa(db, student_id, semester_id=None, year_id=None):
+        query = """
+        SELECT c.credit_unit, AVG(s.score)
+        FROM courses c
+        JOIN enrollments e ON c.id=e.course_id
+        LEFT JOIN assessments a ON a.course_id=c.id
+        LEFT JOIN scores s ON s.student_id=? AND s.assessment_id=a.id
+        WHERE e.student_id=? 
+        """
+        params = [student_id, student_id]
+        if semester_id:
+            query += " AND e.semester_id=?"
+            params.append(semester_id)
+        if year_id:
+            query += " AND e.year_id=?"
+            params.append(year_id)
+        query += " GROUP BY c.id"
+        db.cursor.execute(query, tuple(params))
+        total_points = 0
+        total_units = 0
+        for unit, avg_score in db.cursor.fetchall():
+            if avg_score is None: continue
+            gp = 0
+            for min_score, val, _ in ResultService.GRADE_SCALE:
+                if avg_score >= min_score:
+                    gp = val
+                    break
+            total_points += gp * unit
+            total_units += unit
+        return round(total_points / total_units,2) if total_units else 0
+
+    @staticmethod
+    def calculate_cgpa(db, student_id):
+        db.cursor.execute("SELECT id FROM semesters")
+        semesters = [s[0] for s in db.cursor.fetchall()]
+        db.cursor.execute("SELECT id FROM academic_years")
+        years = [y[0] for y in db.cursor.fetchall()]
+        if not semesters or not years:
+            return 0
+        total_points = 0
+        total_units = 0
+        for sem_id in semesters:
+            for year_id in years:
+                db.cursor.execute("""
+                    SELECT c.credit_unit, AVG(s.score)
+                    FROM courses c
+                    JOIN enrollments e ON c.id = e.course_id
+                    LEFT JOIN assessments a ON a.course_id=c.id
+                    LEFT JOIN scores s ON s.student_id=? AND s.assessment_id=a.id
+                    WHERE e.student_id=? AND e.semester_id=? AND e.year_id=?
+                    GROUP BY c.id
+                """, (student_id, student_id, sem_id, year_id))
+                for unit, avg_score in db.cursor.fetchall():
+                    if avg_score is None: continue
+                    gp = 0
+                    for min_score, val, _ in ResultService.GRADE_SCALE:
+                        if avg_score >= min_score:
+                            gp = val
+                            break
+                    total_points += gp * unit
+                    total_units += unit
+        return round(total_points / total_units,2) if total_units else 0
+
+    @staticmethod
+    def letter_grade(gpa):
+        for min_gpa, _, grade in ResultService.LETTER_GRADE:
+            if gpa >= min_gpa:
+                return grade
+        return "Fail"
+
+# ========================= BASE FRAME =========================
+class BaseFrame(ttk.Frame):
+    def __init__(self,parent,controller):
+        super().__init__(parent)
+        self.controller=controller
+        self.configure(style="TFrame")
+
+# ========================= LOGIN SELECTION =========================
+class LoginSelectionFrame(BaseFrame):
+    def __init__(self,parent,controller):
+        super().__init__(parent,controller)
+        ttk.Label(self,text="Select Login Type",font=("Arial",22,"bold"),
+                  foreground=THEME["title"],background=THEME["bg_frame"]).pack(pady=30)
+        self.create_button("Admin Login",lambda:controller.show_frame("AdminLoginFrame")).pack(pady=15)
+        self.create_button("Student Login",lambda:controller.show_frame("StudentLoginFrame")).pack(pady=15)
+    def create_button(self,text,cmd):
+        btn=tk.Button(self,text=text,command=cmd,bg=THEME["btn_bg"],fg=THEME["btn_fg"],
+                      font=("Arial",14,"bold"),relief="raised",width=25)
+        btn.bind("<Enter>",lambda e:btn.config(bg=THEME["btn_hover"]))
+        btn.bind("<Leave>",lambda e:btn.config(bg=THEME["btn_bg"]))
+        return btn
+
+# ========================= ADMIN LOGIN =========================
+class AdminLoginFrame(BaseFrame):
+    def __init__(self,parent,controller):
+        super().__init__(parent,controller)
+        ttk.Label(self,text="Admin Login",font=("Arial",20,"bold"),
+                  foreground=THEME["title"],background=THEME["bg_frame"]).pack(pady=15)
+        ttk.Label(self,text="Username",foreground=THEME["fg_text"],background=THEME["bg_frame"]).pack()
+        self.username=ttk.Entry(self)
+        self.username.pack()
+        ttk.Label(self,text="Password",foreground=THEME["fg_text"],background=THEME["bg_frame"]).pack()
+        self.password=ttk.Entry(self,show="*")
+        self.password.pack()
+        self.create_button("Login",self.login).pack(pady=10)
+        self.create_button("Back",lambda:controller.show_frame("LoginSelectionFrame")).pack()
+    def create_button(self,text,cmd):
+        btn=tk.Button(self,text=text,command=cmd,bg=THEME["btn_bg"],fg=THEME["btn_fg"],
+                      font=("Arial",12,"bold"),relief="raised",width=20)
+        btn.bind("<Enter>",lambda e:btn.config(bg=THEME["btn_hover"]))
+        btn.bind("<Leave>",lambda e:btn.config(bg=THEME["btn_bg"]))
+        return btn
+    def login(self):
+        user=self.username.get().strip()
+        pwd=hash_pwd(self.password.get().strip())
+        db=Database.get_instance()
+        db.cursor.execute("SELECT * FROM admins WHERE username=? AND password=?",(user,pwd))
+        if db.cursor.fetchone():
+            self.controller.session_user={"role":"admin","username":user}
+            self.controller.show_frame("AdminDashboardFrame")
+        else:
+            messagebox.showerror("Error","Invalid credentials")
+
+# ========================= STUDENT LOGIN =========================
+class StudentLoginFrame(BaseFrame):
+    def __init__(self,parent,controller):
+        super().__init__(parent,controller)
+        ttk.Label(self,text="Student Login",font=("Arial",20,"bold"),
+                  foreground=THEME["title"],background=THEME["bg_frame"]).pack(pady=15)
+
+        ttk.Label(self,text="Matric Number",foreground=THEME["fg_text"],background=THEME["bg_frame"]).pack()
+        self.matric=ttk.Entry(self)
+        self.matric.pack(pady=5)
+
+        ttk.Label(self,text="Password",foreground=THEME["fg_text"],background=THEME["bg_frame"]).pack()
+        self.password=ttk.Entry(self,show="*")
+        self.password.pack(pady=5)
+
+        self.create_button("Login",self.login).pack(pady=10)
+        self.create_button("Back",lambda:controller.show_frame("LoginSelectionFrame")).pack()
+
+    def create_button(self,text,cmd):
+        btn=tk.Button(self,text=text,command=cmd,bg=THEME["btn_bg"],fg=THEME["btn_fg"],
+                      font=("Arial",12,"bold"),relief="raised",width=20)
+        btn.bind("<Enter>",lambda e:btn.config(bg=THEME["btn_hover"]))
+        btn.bind("<Leave>",lambda e:btn.config(bg=THEME["btn_bg"]))
+        return btn
+
+    def login(self):
+        matric = self.matric.get().strip()
+        pwd = self.password.get().strip()
+
+        if not matric or not pwd:
+            messagebox.showerror("Error","Please enter both matric number and password")
+            return
+
+        hashed_pwd = hash_pwd(pwd)
+        db = Database.get_instance()
+
+        try:
+            db.cursor.execute(
+                "SELECT id,name,matric_no,school_name FROM students WHERE matric_no=? AND password=?",
+                (matric, hashed_pwd)
+            )
+            student = db.cursor.fetchone()
+        except sqlite3.Error as e:
+            messagebox.showerror("Database Error", str(e))
+            return
+
+        if student:
+            # Store all needed info in session_user
+            self.controller.session_user = {
+                "role":"student",
+                "id":student[0],
+                "name":student[1],
+                "matric_no":student[2],
+                "school_name":student[3]
+            }
+            messagebox.showinfo("Success", f"Welcome {student[1]}!")
+            self.controller.show_frame("StudentDashboardFrame")
+        else:
+            messagebox.showerror("Error","Invalid matric number or password")
+# ========================= ADMIN DASHBOARD =========================
+class AdminDashboardFrame(BaseFrame):
+    def __init__(self,parent,controller):
+        super().__init__(parent,controller)
+        ttk.Label(self,text="Admin Dashboard", font=("Arial",20,"bold"), 
+                  foreground=THEME["title"], background=THEME["bg_frame"]).pack(pady=10)
+        self.db=Database.get_instance()
+        self.create_button("Manage Students", self.manage_students)
+        self.create_button("Manage Courses", self.manage_courses)
+        self.create_button("Manage Semesters", self.manage_semesters)
+        self.create_button("Manage Academic Years", self.manage_academic_years)
+        self.create_button("Manage Enrollments", self.manage_enrollments)
+        self.create_button("Manage Assessments", self.manage_assessments)
+        self.create_button("Manage Scores", self.manage_scores)
+        self.create_button("View Student GPA/CGPA", self.view_student_gpa)
+        self.create_button("Change Admin Password", self.change_admin_password)
+        self.create_button("Logout", self.logout)
+
+    def create_button(self,text,cmd):
+        btn=tk.Button(self,text=text,command=cmd,bg=THEME["btn_bg"],fg=THEME["btn_fg"],
+                      font=("Arial",12,"bold"),relief="raised",width=30)
+        btn.pack(pady=5)
+        btn.bind("<Enter>", lambda e: btn.config(bg=THEME["btn_hover"]))
+        btn.bind("<Leave>", lambda e: btn.config(bg=THEME["btn_bg"]))
+
+    # CRUD
+    def manage_students(self):
+        CRUDWindow(self.db,"students",["id","name","matric_no","password","school_name"],"Students")
+    def manage_courses(self):
+        CRUDWindow(self.db,"courses",["id","course_code","course_title","credit_unit"],"Courses")
+    def manage_semesters(self):
+        CRUDWindow(self.db,"semesters",["id","name"],"Semesters")
+    def manage_academic_years(self):
+        CRUDWindow(self.db,"academic_years",["id","name"],"Academic Years")
+    def manage_enrollments(self):
+        CRUDWindow(self.db,"enrollments",["id","student_id","course_id","semester_id","year_id"],"Enrollments")
+    def manage_assessments(self):
+        CRUDWindow(self.db,"assessments",["id","course_id","assessment_name","max_score"],"Assessments")
+    def manage_scores(self):
+        CRUDWindow(self.db,"scores",["id","student_id","assessment_id","score"],"Scores")
+
+    # Admin features
+    def change_admin_password(self):
+        db=self.db
+        username=self.controller.session_user["username"]
+        old_pwd=simpledialog.askstring("Old Password","Enter current password:",show="*")
+        db.cursor.execute("SELECT password FROM admins WHERE username=?",(username,))
+        current=db.cursor.fetchone()[0]
+        if hash_pwd(old_pwd)!=current:
+            messagebox.showerror("Error","Current password incorrect")
+            return
+        new_pwd=simpledialog.askstring("New Password","Enter new password:",show="*")
+        if not new_pwd:
+            messagebox.showerror("Error","Password cannot be empty")
+            return
+        db.cursor.execute("UPDATE admins SET password=? WHERE username=?",(hash_pwd(new_pwd),username))
+        db.conn.commit()
+        messagebox.showinfo("Success","Admin password changed successfully")
+    def logout(self):
+        self.controller.session_user=None
+        self.controller.show_frame("LoginSelectionFrame")
+
+    # Admin GPA/CGPA
+    def view_student_gpa(self):
+        student_id = simpledialog.askinteger("Student ID", "Enter student ID to view:")
+        if not student_id: return
+        self.db.cursor.execute("SELECT * FROM students WHERE id=?", (student_id,))
+        student = self.db.cursor.fetchone()
+        if not student:
+            messagebox.showerror("Error","Student not found")
+            return
+        sem_id = year_id = None
+        self.db.cursor.execute("SELECT id,name FROM semesters ORDER BY id")
+        semesters = self.db.cursor.fetchall()
+        if semesters:
+            sem_name = simpledialog.askstring("Semester GPA", "Enter semester name (leave empty for all):")
+            if sem_name:
+                for s in semesters:
+                    if s[1].lower() == sem_name.lower(): sem_id=s[0]; break
+        self.db.cursor.execute("SELECT id,name FROM academic_years ORDER BY id")
+        years = self.db.cursor.fetchall()
+        if years:
+            year_name = simpledialog.askstring("Academic Year GPA", "Enter academic year (leave empty for all):")
+            if year_name:
+                for y in years:
+                    if y[1].lower() == year_name.lower(): year_id=y[0]; break
+        gpa = ResultService.calculate_gpa(self.db, student_id, sem_id, year_id)
+        cgpa = ResultService.calculate_cgpa(self.db, student_id)
+        msg = f"Student: {student[1]} | School: {student[4]}\n"
+        if sem_id or year_id:
+            msg += f"GPA for selection: {gpa} ({ResultService.letter_grade(gpa)})\n"
+        msg += f"CGPA (all semesters): {cgpa} ({ResultService.letter_grade(cgpa)})"
+        messagebox.showinfo("Student GPA/CGPA", msg)
+
+# ========================= CRUD WINDOW (SEARCH + VERTICAL SCROLL) =========================
+class CRUDWindow(tk.Toplevel):
+    def __init__(self, db, table, columns, title):
+        super().__init__()
+        self.db = db
+        self.table = table
+        self.columns = columns
+        self.title(title)
+        self.geometry("900x500")
+        search_frame = tk.Frame(self)
+        search_frame.pack(fill="x", pady=5)
+        tk.Label(search_frame, text="Search:").pack(side="left", padx=5)
+        self.search_var = tk.StringVar()
+        self.search_var.trace_add("write", self.search)
+        tk.Entry(search_frame, textvariable=self.search_var).pack(side="left", padx=5)
+        tree_frame = tk.Frame(self)
+        tree_frame.pack(fill="both", expand=True)
+        vsb = tk.Scrollbar(tree_frame, orient="vertical")
+        vsb.pack(side="right", fill="y")
+        self.tree = ttk.Treeview(tree_frame, columns=columns, show="headings", yscrollcommand=vsb.set)
+        vsb.config(command=self.tree.yview)
+        self.tree.pack(side="left", fill="both", expand=True)
+        for col in columns:
+            self.tree.heading(col, text=col)
+            self.tree.column(col, width=120, anchor="center")
+        btn_frame = tk.Frame(self)
+        btn_frame.pack(pady=5)
+        tk.Button(btn_frame, text="Add", command=self.add).pack(side="left", padx=5)
+        tk.Button(btn_frame, text="Edit", command=self.edit).pack(side="left", padx=5)
+        tk.Button(btn_frame, text="Delete", command=self.delete).pack(side="left", padx=5)
+        tk.Button(btn_frame, text="Refresh", command=self.refresh).pack(side="left", padx=5)
+        self.refresh()
+
+    def refresh(self):
+        for i in self.tree.get_children():
+            self.tree.delete(i)
+        self.db.cursor.execute(f"SELECT * FROM {self.table}")
+        for row in self.db.cursor.fetchall():
+            self.tree.insert("", "end", values=row)
+
+    def search(self, *args):
+        query = self.search_var.get().lower()
+        for i in self.tree.get_children():
+            self.tree.delete(i)
+        self.db.cursor.execute(f"SELECT * FROM {self.table}")
+        for row in self.db.cursor.fetchall():
+            if any(query in str(v).lower() for v in row):
+                self.tree.insert("", "end", values=row)
+
+    def add(self):
+         values=[]
+         for col in self.columns[1:]:
+             val=simpledialog.askstring("Input",f"{col}")
+             if val is None: return
+             if self.table=="students" and col=="password": val=hash_pwd(val)
+             if col in ["credit_unit","max_score","score"]:
+                 try: val=float(val)
+                 except: messagebox.showerror("Error","Invalid number"); return
+             values.append(val)
+         placeholders=",".join(["?"]*len(values))
+         self.db.cursor.execute(f"INSERT INTO {self.table}({','.join(self.columns[1:])}) VALUES({placeholders})",values)
+         self.db.conn.commit()
+         self.refresh()
+
+    def edit(self):
+        sel=self.tree.focus()
+        if not sel: messagebox.showerror("Error","Select a row to edit"); return
+        vals=self.tree.item(sel)["values"]
+        new_vals=[]
+        for i,col in enumerate(self.columns[1:],start=1):
+            val=simpledialog.askstring("Edit",f"{col}",initialvalue=str(vals[i]))
+            if val is None: return
+            if self.table=="students" and col=="password": val=hash_pwd(val)
+            if col in ["credit_unit","max_score","score"]:
+                try: val=float(val)
+                except: messagebox.showerror("Error","Invalid number"); return
+            new_vals.append(val)
+        set_clause=",".join([f"{c}=?" for c in self.columns[1:]])
+        self.db.cursor.execute(f"UPDATE {self.table} SET {set_clause} WHERE id=?",(*new_vals,vals[0]))
+        self.db.conn.commit()
+        self.refresh()
+
+    def delete(self):
+        selected = self.tree.focus()
+        if not selected: messagebox.showerror("Error","Select a row to delete"); return
+        data = self.tree.item(selected)["values"]
+        if messagebox.askyesno("Confirm","Are you sure you want to delete this row?"):
+            self.db.cursor.execute(f"DELETE FROM {self.table} WHERE {self.columns[0]}=?", (data[0],))
+            self.db.conn.commit()
+            self.refresh()
+
+# ========================= STUDENT DASHBOARD =========================
+class StudentDashboardFrame(BaseFrame):
+    def __init__(self,parent,controller):
+        super().__init__(parent,controller)
+        ttk.Label(self,text="Student Dashboard", font=("Arial",20,"bold"),
+                  foreground=THEME["title"], background=THEME["bg_frame"]).grid(row=0,column=0,pady=10,columnspan=2)
+        self.db=Database.get_instance()
+        self.create_button("View GPA", self.view_gpa,1)
+        self.create_button("View CGPA", self.view_cgpa,2)
+        self.create_button("View GPA Chart", self.gpa_chart,3)
+        self.create_button("Print & Save Transcript", self.preview_transcript,4)
+        self.create_button("Change Password", self.change_password,5)
+        self.create_button("Logout", self.logout,6)
+    def create_button(self,text,cmd,row):
+        btn=tk.Button(self,text=text,command=cmd,bg=THEME["btn_bg"],fg=THEME["btn_fg"],
+                      font=("Arial",12,"bold"),relief="raised",width=25)
+        btn.grid(row=row,column=0,pady=5)
+        btn.bind("<Enter>", lambda e: btn.config(bg=THEME["btn_hover"]))
+        btn.bind("<Leave>", lambda e: btn.config(bg=THEME["btn_bg"]))
+
+    # GPA / CGPA / Chart / Transcript
+    def view_gpa(self):
+        student_id=self.controller.session_user["id"]
+        db=self.db
+        db.cursor.execute("SELECT id,name FROM semesters")
+        semesters=db.cursor.fetchall()
+        db.cursor.execute("SELECT id,name FROM academic_years")
+        years=db.cursor.fetchall()
+        sem_id=None; year_id=None
+        if semesters:
+            sem_name=simpledialog.askstring("Semester GPA","Enter semester name (leave empty for all):")
+            for s in semesters:
+                if s[1].lower()==str(sem_name).lower(): sem_id=s[0]; break
+        if years:
+            year_name=simpledialog.askstring("Academic Year GPA","Enter academic year (leave empty for all):")
+            for y in years:
+                if y[1].lower()==str(year_name).lower(): year_id=y[0]; break
+        gpa=ResultService.calculate_gpa(db,student_id,sem_id,year_id)
+        messagebox.showinfo("GPA",f"Your GPA: {gpa} ({ResultService.letter_grade(gpa)})")
+
+    def view_cgpa(self):
+        student_id=self.controller.session_user["id"]
+        cgpa=ResultService.calculate_cgpa(self.db,student_id)
+        if cgpa==0:
+            messagebox.showerror("Error","CGPA not available (no scores recorded).")
+        else:
+            messagebox.showinfo("CGPA",f"Your CGPA: {cgpa} ({ResultService.letter_grade(cgpa)})")
+
+    def gpa_chart(self):
+        student_id=self.controller.session_user["id"]
+        gpa=ResultService.calculate_gpa(self.db,student_id)
+        fig, ax = plt.subplots()
+        ax.bar(["GPA"], [gpa], color="#00ff7f")
+        ax.set_ylim(0, 5)
+        ax.set_title("GPA Chart")
+        win=tk.Toplevel(self)
+        canvas = FigureCanvasTkAgg(fig, master=win)
+        canvas.get_tk_widget().pack()
+        canvas.draw()
+    def preview_transcript(self):
+        student_session = self.controller.session_user
+        student_id = student_session["id"]
+        student_name = student_session["name"]
+        matric_no = student_session.get("matric_no", "N/A")
+        school_name = student_session.get("school_name", "SCHOOL NAME NOT SET")
+
+        db = self.db
+
+        # Fetch semesters and years where the student is enrolled
+        db.cursor.execute("""
+            SELECT DISTINCT semester_id, year_id 
+            FROM enrollments 
+            WHERE student_id=?
+            ORDER BY year_id, semester_id
+        """, (student_id,))
+        sem_years = db.cursor.fetchall()
+        if not sem_years:
+            messagebox.showerror("Error", "No enrollments found. Cannot generate transcript.")
+            return
+
+        # Build transcript text
+        transcript = f"{school_name.upper()}\n"
+        transcript += "="*70 + "\n"
+        transcript += f"STUDENT TRANSCRIPT\nStudent: {student_name}\nMatric No: {matric_no}\n"
+        transcript += "="*70 + "\n\n"
+
+        for sem_id, year_id in sem_years:
+            # Get semester and year names
+            db.cursor.execute("SELECT name FROM semesters WHERE id=?", (sem_id,))
+            sem_name = db.cursor.fetchone()[0]
+            db.cursor.execute("SELECT name FROM academic_years WHERE id=?", (year_id,))
+            year_name = db.cursor.fetchone()[0]
+
+            transcript += f"{sem_name} - {year_name}\n"
+            transcript += "Course Code | Title | Credit | Avg Score | Grade\n"
+            transcript += "-"*65 + "\n"
+
+            db.cursor.execute("""
+                SELECT c.course_code, c.course_title, c.credit_unit, AVG(s.score)
+                FROM courses c
+                JOIN enrollments e ON c.id = e.course_id
+                LEFT JOIN assessments a ON a.course_id = c.id
+                LEFT JOIN scores s ON s.student_id=? AND s.assessment_id = a.id
+                WHERE e.student_id=? AND e.semester_id=? AND e.year_id=?
+                GROUP BY c.id
+            """, (student_id, student_id, sem_id, year_id))
+            records = db.cursor.fetchall()
+
+            if not records:
+                transcript += "No courses enrolled.\n"
+            else:
+                for course_code, title, unit, avg_score in records:
+                    avg_score = 0 if avg_score is None else round(avg_score, 2)
+                    letter = next((g for min_s, val, g in ResultService.GRADE_SCALE if avg_score >= min_s), "F")
+                    transcript += f"{course_code} | {title} | {unit} | {avg_score} | {letter}\n"
+
+            sem_gpa = ResultService.calculate_gpa(db, student_id, sem_id, year_id)
+            transcript += "-"*65 + f"\nSemester GPA: {sem_gpa} ({ResultService.letter_grade(sem_gpa)})\n\n"
+
+        # Final CGPA
+        cgpa = ResultService.calculate_cgpa(db, student_id)
+        transcript += "="*65 + f"\nFINAL CGPA: {cgpa} ({ResultService.letter_grade(cgpa)})\n"
+
+                   # Show transcript window with scrollbar
+        win = tk.Toplevel(self)
+        win.title("Transcript Preview")
+        win.geometry("850x600")  # Larger window
+
+        frame = tk.Frame(win)
+        frame.pack(fill="both", expand=True, padx=10, pady=10)
+
+        scrollbar = tk.Scrollbar(frame)
+        scrollbar.pack(side="right", fill="y")
+
+        text = tk.Text(frame, wrap="none", yscrollcommand=scrollbar.set, font=("Courier", 10))
+        text.insert("1.0", transcript)
+        text.configure(state="disabled")
+        text.pack(fill="both", expand=True)
+
+        scrollbar.config(command=text.yview)
+
+        btn_frame = tk.Frame(win)
+        btn_frame.pack(pady=5)
+        tk.Button(btn_frame, text="Export to PDF", command=lambda: self.export_pdf(transcript)).pack(side="left", padx=5)
+        tk.Button(btn_frame, text="Close", command=win.destroy).pack(side="left", padx=5)
+
+    def export_pdf(self, text_data):
+     file_path = filedialog.asksaveasfilename(
+         defaultextension=".pdf",
+         filetypes=[("PDF Files","*.pdf")]
+     )
+     if not file_path:
+         return
+
+     doc = SimpleDocTemplate(file_path, pagesize=letter)
+     styles = getSampleStyleSheet()
+     elements = []
+
+     for line in text_data.split("\n"):
+         elements.append(Paragraph(line, styles["Normal"]))
+         elements.append(Spacer(1, 0.2*inch))
+
+     doc.build(elements)
+     messagebox.showinfo("Saved", "Transcript exported successfully")
+    # Change password
+    def change_password(self):
+        db=self.db
+        student_id=self.controller.session_user["id"]
+        old_pwd=simpledialog.askstring("Old Password","Enter current password:",show="*")
+        db.cursor.execute("SELECT password FROM students WHERE id=?",(student_id,))
+        current=db.cursor.fetchone()[0]
+        if hash_pwd(old_pwd)!=current:
+            messagebox.showerror("Error","Current password incorrect")
+            return
+        new_pwd=simpledialog.askstring("New Password","Enter new password:",show="*")
+        if not new_pwd:
+            messagebox.showerror("Error","Password cannot be empty")
+            return
+        db.cursor.execute("UPDATE students SET password=? WHERE id=?",(hash_pwd(new_pwd),student_id))
+        db.conn.commit()
+        messagebox.showinfo("Success","Password changed successfully")
+
+    def logout(self):
+        self.controller.session_user=None
+        self.controller.show_frame("LoginSelectionFrame")
+
+# ========================= CONTROLLER =========================
+class AppController(tk.Tk):
+    def __init__(self):
+        super().__init__()
+        self.title("ACADEMIC PERFORMANCE MANAGEMENT SYSTEM (ANGELNAITBJ®)")
+        self.geometry("1000x700")
+        self.configure(bg=THEME["bg_main"])
+        self.protocol("WM_DELETE_WINDOW", self.on_close)
+        self.session_user=None
+        container=ttk.Frame(self)
+        container.pack(fill="both",expand=True)
+        container.grid_rowconfigure(0,weight=1)
+        container.grid_columnconfigure(0,weight=1)
+        self.frames={}
+        for F in (LoginSelectionFrame,AdminLoginFrame,StudentLoginFrame,AdminDashboardFrame,StudentDashboardFrame):
+            page_name=F.__name__
+            frame=F(parent=container,controller=self)
+            frame.configure(style="TFrame")
+            self.frames[page_name]=frame
+            frame.grid(row=0,column=0,sticky="nsew")
+        self.show_frame("LoginSelectionFrame")
+    def show_frame(self,page_name):
+        frame=self.frames[page_name]
+        frame.tkraise()
+    def on_close(self):
+        if messagebox.askokcancel("Quit","Do you want to quit?"):
+            Database.get_instance().close()
+            self.destroy()
+
+# ========================= RUN =========================
+if __name__=="__main__":
+    db=Database.get_instance()
+    app=AppController()
+    app.mainloop()
+# %%
+
