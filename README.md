@@ -207,7 +207,7 @@ Cloud Database Integration
 
 👨‍💻 Author
 
-ANGEL NAITBJ
+ANGEL NAITBJ(Norbert April Igwe Theo Bar-Jehoshua Angel)
 
 Final Year Project – Academic Performance Management System
 Developed using Python & Tkinter
