@@ -1,7 +1,7 @@
-🎓 Academic Performance Management System (APMS) v1.0
+🎓 Academic Performance Management System (APMS) v1.1.0
 📌 Overview
 
-The Academic Performance Management System (APMS) v1.0 is a desktop-based academic result processing system developed using Python and Tkinter GUI.
+The Academic Performance Management System (APMS) v1.1.0 is a desktop-based academic result processing system developed using Python and Tkinter GUI.
 
 It is designed to manage students, courses, enrollments, academic sessions, and academic performance while automatically calculating GPA and CGPA.
 
@@ -97,7 +97,7 @@ SQLite3 (Database)
 Matplotlib (GPA Chart Visualization)
 
 📂 Project Structure
-APMS_v1.0/
+APMS_v1.1.0/
 │
 ├── main.py
 ├── database.db
@@ -105,9 +105,9 @@ APMS_v1.0/
 └── requirements.txt
 ⚙️ Installation Guide
 1️⃣ Clone the Repository
-git clone https://github.com/angelnaitbj/APMS-v1.0.git
+git clone https://github.com/angelnaitbj/APMS-v1.1.0.git
 2️⃣ Navigate to the Project Folder
-cd APMS-v1.0
+cd APMS-v1.1.0
 3️⃣ Install Required Packages
 pip install matplotlib
 
@@ -169,7 +169,7 @@ Improve data accuracy and efficiency
 Reduce manual result processing
 
 🏆 Version History
-v1.0
+v1.1.0
 
 Basic student and course management
 
@@ -183,7 +183,7 @@ Automatic GPA & CGPA
 
 Enrollment system
 
-v1.0 (Current Version)
+v1.1.0 (Current Version)
 
 Modern Dashboard UI
 
@@ -197,7 +197,7 @@ Enhanced Security
 
 Search & Scrollable Tables
 
-📌 Future Improvements (v2.0 Ideas)
+📌 Future Improvements (v1.2.0 Ideas)
 
 Multi-Admin Support
 
